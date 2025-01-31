@@ -1,0 +1,484 @@
+﻿<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>Equipo 1030 C - Resolver Inventario con A*</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 50px);
+            gap: 5px;
+            margin: 20px auto;
+        }
+
+        .cell {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid black;
+        }
+
+        .wall {
+            background-color: gray;
+        }
+
+        .robot {
+            background-color: blue;
+            color: white;
+        }
+
+        .inventory {
+            background-color: green;
+            color: white;
+        }
+
+        .log {
+            margin-top: 20px;
+            text-align: left;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+            .log pre {
+                background: #f4f4f4;
+                padding: 10px;
+                border: 1px solid #ddd;
+            }
+
+        #styledButton {
+            background-color: #4CAF50; /* Color de fondo */
+            border: none; /* Sin borde */
+            color: white; /* Color del texto */
+            padding: 15px 32px; /* Espaciado interno */
+            text-align: center; /* Alineación del texto */
+            text-decoration: none; /* Sin subrayado */
+            display: inline-block; /* Tipo de display */
+            font-size: 16px; /* Tamaño de la fuente */
+            margin: 4px 2px; /* Margen */
+            cursor: pointer; /* Cambia el cursor al pasar el ratón */
+            border-radius: 12px; /* Bordes redondeados */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Sombra */
+            transition: background-color 0.3s, box-shadow 0.3s; /* Transición suave */
+        }
+
+            #styledButton:hover {
+                background-color: #45a049; /* Color de fondo al pasar el cursor */
+                box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2); /* Sombra al pasar el cursor */
+            }
+    </style>
+    <script>
+        //Para representar tablero
+        let grid = [
+            ["M1", "#", "", "M3"],
+            ["", "#", "", ""],
+            ["M2", "", "R", ""],
+            ["", "", "", ""]
+        ];
+
+        //Posiciones objetivo por inventario
+        const goalsInventory = {
+            M1: [3, 3],
+            M2: [3, 2],
+            M3: [3, 1]
+        };
+
+        //Posicion inicial del robot
+        let robotPosition = [2, 2];
+
+        const logs = [];
+
+        //Para indicar que inventario ya se ubicó en posicones objetivo
+        var m1Resolved = 0;
+        var m2Resolved = 0;
+        var m3Resolved = 0;
+
+        //Actualiza tablero en base a las posiciones asignadas antes de invocar esta función
+        function renderGrid() {
+            const container = document.getElementById("gridContainer");
+            container.innerHTML = "";
+
+            grid.forEach((row, i) => {
+                row.forEach((cell, j) => {
+                    const div = document.createElement("div");
+                    div.classList.add("cell");
+                    if (cell === "#") div.classList.add("wall");
+                    if (cell === "R") div.classList.add("robot");
+                    if (goalsInventory[cell]) div.classList.add("inventory");
+                    div.textContent = cell;
+                    container.appendChild(div);
+                });
+            });
+        }
+
+        //Para registrar log general
+        function logGeneral(message) {
+            const logGral = document.getElementById("logGeneral");
+            logGral.innerHTML += "<br> " + message;
+        }
+
+        //Para mostrar en pantalla los cálculos que realiza el algoritmo por cada inventario
+        function log(message) {
+            logs.push(message);
+            const logContainer = document.getElementById("logContainer");
+            logContainer.innerHTML = logs.map(log => `<pre>${log}</pre>`).join("");
+        }
+
+        //Calcula heurística
+        function calculateHeuristic(pos, goal) {
+            return Math.abs(pos[0] - goal[0]) + Math.abs(pos[1] - goal[1]);
+        }
+
+        //Obtiene los movimientos vaíldos de acuerdo a la posición solicitada, considerando limites de tablero y obstaculos
+        function getValidMoves([x, y], inventory) {
+            const moves = [];
+            const directions = [
+                [0, 1], [1, 0], [0, -1], [-1, 0]
+            ];
+            directions.forEach(([dx, dy]) => {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx >= 0 && ny >= 0 && nx < 4 && ny < 4 && (grid[nx][ny] === "" || grid[nx][ny] === inventory)) {
+                    moves.push([nx, ny]);
+                }
+            });
+
+            return moves;
+        }
+
+        //Actualiza la posición del robot en el grid
+        function moveRobot(target) {
+            const [tx, ty] = target;
+            const [rx, ry] = robotPosition;
+
+            grid[rx][ry] = "";
+            grid[tx][ty] = "R";
+            robotPosition = [tx, ty];
+
+            if (m1Resolved == 1 && (rx == goalsInventory.M1[0] && ry == goalsInventory.M1[1]) && grid[tx][ty] == "R")
+                grid[goalsInventory.M1[0]][goalsInventory.M1[1]] = "M1"
+
+            if (m2Resolved == 1 && (rx == goalsInventory.M2[0] && ry == goalsInventory.M2[1]) && grid[tx][ty] == "R")
+                grid[goalsInventory.M2[0]][goalsInventory.M2[1]] = "M2"
+
+            if (m3Resolved == 1 && (rx == goalsInventory.M3[0] && ry == goalsInventory.M3[1]) && grid[tx][ty] == "R")
+                grid[goalsInventory.M3[0]][goalsInventory.M3[1]] = "M3"
+
+            renderGrid();
+        }
+
+        function arrangeInventory() {
+
+            log("Iniciando búsqueda A*...");
+
+            //Indica las posiciones iniciales de cada inventario
+            const goals = {
+                M1: [0, 0],
+                M2: [2, 0],
+                M3: [0, 3]
+            };
+
+            //Se calcula el costo de llegar a cada inventario desde la posición inicial del robot
+            var f_m1 = calculateHeuristic(robotPosition, goals.M1)
+            var f_m2 = calculateHeuristic(robotPosition, goals.M2)
+            var f_m3 = calculateHeuristic(robotPosition, goals.M3)
+
+            //Almacena costos iniciales por inventario
+            const toProcess = {
+                M1: [f_m1],
+                M2: [f_m2],
+                M3: [f_m3]
+            }
+
+            //Nos ayuda en el proceso que debemos esperar en pantalla para que se visualice el movimiento del robot
+            //en base a los cálculos del algortimo
+            var seconds = 0
+
+            // Se convirte el objeto a un array de entradas
+            var entries = Object.entries(toProcess);
+
+            // Ordenar las entradas por el costo
+            entries.sort(([, [valueA]], [, [valueB]]) => valueA - valueB);
+
+            var strOrder = 'Se calcula el costo de llegar a cada inventario desde la posición inicial del robot <br>'
+
+            entries.forEach(([key, value]) => {
+                strOrder += `Inventario: ${key} - Costo: ${value} <br>`;
+            });
+
+            log(strOrder);
+
+            var strFirst = 'En basea a los resultados anteriores se comenzará primero por el más cercano <br>'
+
+            entries.some(([key, value]) => {
+                strFirst += `Inventario: ${key} - Costo: ${value} <br>`;
+                return true;
+            });
+
+            log(strFirst);
+
+            // Iterar sobre el array ordenado por el costo y se comienza por el que esta más cercano a la posición inicial del robot
+            entries.forEach(([key, [value]]) => {
+                var posInv;
+                var posGoalInv;
+
+                switch (key) {
+                    case 'M1':
+                        posInv = goals.M1;
+                        posGoalInv = goalsInventory.M1;
+                        break;
+                    case 'M2':
+                        posInv = goals.M2;
+                        posGoalInv = goalsInventory.M2;
+                        break;
+                    case 'M3':
+                        posInv = goals.M3;
+                        posGoalInv = goalsInventory.M3;
+                        break;
+                }
+
+                //Se calcula y mueve el robor a posición inicial de cada inventario
+                setTimeout(() => {
+                    movesToGoal = aStar(robotPosition, posInv, key, false);
+                }, seconds * 500);
+
+                //Nos ayuda en el proceso que debemos esperar en pantalla para que se visualice el movimiento del robot
+                seconds += 7;
+
+                //Se calcula y mueve el robor a posición objetivo de cada inventario
+                setTimeout(() => {
+                    if (movesToGoal > 0) {
+                        movesToGoal = aStar(robotPosition, posGoalInv, key, true);
+                    }
+                    else {
+                        return;
+                    }
+                }, seconds * 500);
+
+                //Nos ayuda en el proceso que debemos esperar en pantalla para que se visualice el movimiento del robot
+                seconds += 7;
+            });
+
+            //Nos ayuda en el proceso que debemos esperar en pantalla para que se visualice el movimiento del robot
+            seconds += 3;
+
+            //Se evaluan variables que determina si todos los inventarios llegaron a objetivos final, de ser correcto actualiza etiqueta de inventario final
+            //Solo es para actualizar en pantalla la posicion final de los inventarios
+            setTimeout(() => {
+
+                if (m1Resolved == 1) {
+                    grid[3][3] = 'M1';
+                    renderGrid();
+                }
+
+                if (m2Resolved == 1) {
+                    grid[3][2] = 'M2';
+                    renderGrid();
+                }
+
+                if (m3Resolved == 1) {
+                    grid[3][1] = 'M3';
+                    renderGrid();
+                }
+
+            }, seconds * 500);
+
+        }
+
+        function aStar(iPosition, gPosition, inventory, isToGoal) {
+
+            const openList = [];
+            const closedList = [];
+            var hinitial = calculateHeuristic(iPosition, gPosition);
+            const queue = [{ position: iPosition, path: [], g: 0, h: hinitial }];
+            const visited = new Set(); //Set para comprobar la existencia de elementos y así evitar repetir visitas.
+            const pathfinal = [];
+            const depured = [{ position: [0, 0], description: "Inicial" }];
+
+            logGeneral(`Posicion objetivo: ${JSON.stringify(gPosition)}`);
+
+            //Se itera sobre las colas para obtener la ruta más óptima
+            while (queue.length > 0) {
+                // Este ordenamiento organiza los elementos de la cola (queue) basado en la suma de g (costo desde el punto de partida hasta la posición actual) y h (heurística o estimación del costo restante hasta el destino) para cada nodo.
+                // Así, los nodos con menor costo total(a.g + a.h) se colocan al inicio de la cola, priorizando los caminos más prometedores.
+                // En base a éste ordenamiento es como se obtiene el plan de acción
+                queue.sort((a, b) => (a.g + a.h) - (b.g + b.h));
+                const current = queue.shift(); //Extrae y elimina el primer elemento de la cola(queue), que es el nodo con el menor costo total(explicado en el primer punto). Se asigna a current, lo que significa que ahora se va a procesar este nodo.
+
+                //Reseteamos listas abiertas y cerradas por inventario
+                closedList.length = 0;
+                openList.length = 0;
+
+                logGeneral("posición con menor costo [" + current.position + "] / g:" + current.g + " h:" + current.h + " f:" + (current.g + current.h));
+                logGeneral('current path:' + current.path);
+
+                const [cx, cy] = current.position;
+                const key = `${cx},${cy}`;
+
+                //Se evaluan los nodos visitados
+                if (visited.has(key)) {
+                    logGeneral('Ya se visitó la posición:' + key);
+                    continue;
+                }
+                visited.add(key);
+
+                //Se agrega la posición actual a la lista cerrada
+                closedList.push({ position: current.position, g: current.g, h: current.h, f: current.g + current.h });
+
+                //Se verifica si se alcanzó el objetivo
+                if (gPosition[0] === cx && gPosition[1] === cy) {
+                    //Se agrega la posición objetivo alcanzada a arreglo general
+                    depured.push({
+                        position: current.position, description: 'Lista cerrada: [' + current.position + '] | Objetivo alcanzado'
+                    });
+                    //Se agrega la posición objetivo alcanzada a arreglo de ruta óptima
+                    pathfinal.push(...current.path);
+                    break;
+                }
+
+                //Se obtienen los movimientos válidos en base a la la posicion actual
+                const moves = getValidMoves(current.position, inventory);
+
+                //Se calculas los costos por cada movimiento válidos y éstos se agregan a la lista abierta
+                moves.forEach(([mx, my]) => {
+                    const g = current.g + 1; //Se le suma 1 que es el costo de mover 1 posición
+                    const h = calculateHeuristic([mx, my], gPosition);
+                    const f = g + h;
+                    queue.push({ position: [mx, my], path: [...current.path, [mx, my]], g, h });
+                    openList.push({ position: [mx, my], g, h, f });
+                });
+
+                var detail = `Lista cerrada: ${JSON.stringify(closedList)}` + ' | ' + `Lista abierta: ${JSON.stringify(openList)}`;
+
+                logGeneral(detail);
+
+                //Cada lista cerrada se agrega a un arreglo general
+                closedList.forEach((item, index) => {
+                    depured.push({ position: item.position, description: detail });
+                });
+
+            }
+
+            if (pathfinal.length > 0) {
+
+                pathfinal.unshift(iPosition);//En la primera posición del plan se agrega la posición inicial
+
+                // Se filtra arreglo general para mantener solo los elementos cuyas posiciones están en pathfinal
+                const filteredDepured = depured.filter(item =>
+                    pathfinal.some(position => position[0] === item.position[0] && position[1] === item.position[1])
+                );
+
+                //Se registran las rutas finales para mostrarlas en pantalla
+                const result = filteredDepured.map(item => ({
+                    position: item.position,
+                    description: item.description
+                }));
+
+                ////////Inicia armado de descripción del plan por inventario para mostrar en pantalla
+                var plan = '';
+
+                if (isToGoal) {
+                    plan = 'Plan para llegar a objetivo de ' + inventory + '<br>';
+                }
+                else {
+                    plan = 'Plan para llegar a ' + inventory + '<br>';
+                }
+
+                pathfinal.forEach((item, index) => {
+                    if (index === pathfinal.length - 1) {
+
+                        if (Object.values(goalsInventory).some(goal => goal[0] === gPosition[0] && goal[1] === gPosition[1])) {
+                            plan += 'descargarR: (' + inventory + ',' + item[0] + ',' + item[1] + ') <br>';
+
+                            switch (inventory) {
+                                case 'M1':
+                                    m1Resolved = 1;
+                                    break;
+                                case 'M2':
+                                    m2Resolved = 1;
+                                    break;
+                                case 'M3':
+                                    m3Resolved = 1;
+                                    break;
+                            }
+                        }
+                        else {
+                            plan += 'cargarR: (' + inventory + ',' + item[0] + ',' + item[1] + ') <br>';
+                        }
+
+
+                    }
+                    else {
+                        plan += ` moverR: (${item[0]}, ${item[1]}) <br>`;
+                    }
+                });
+
+                log(plan);
+                ///////Termina plan por inventario para mostrar en pantalla
+
+                //Se muesta en pantalla las iteraciones que se hicieron para llegar a posiciones necesarias, y sus listas cerradas y abiertas
+                result.forEach((item, index) => {
+                    log(`Iteración ${index + 1}: Posición = [${item.position}], Descripción = ${item.description}`);
+                });
+
+                executePath(pathfinal);
+
+                return pathfinal.length;
+            } else {
+                log("No se encontró solución para llegar a " + inventory);
+                return -1;
+            }
+
+        }
+
+        //Sirve para mostrar en pantalla los movimientos que se calcularon
+        function executePath(path) {
+            if (path.length === 0)
+                return;
+
+            const [next, ...rest] = path;
+
+            setTimeout(() => {
+                moveRobot(next);
+                executePath(rest);
+            }, 500);
+        }
+
+        window.onload = function () {
+            renderGrid();
+            const button = document.getElementById("styledButton");
+            button.addEventListener("click", function () {
+                arrangeInventory();
+                button.disabled = true;
+            });
+        };
+    </script>
+</head>
+<body>
+    <h1>Equipo 1030 C - Resolver Inventario con A*</h1>
+    <table>
+        <tr>
+            <td style="vertical-align:top;">
+                <div id="gridContainer" class="grid"></div>
+            </td>
+            <td style="padding:5px;">
+                &nbsp;
+            </td>
+            <td style="vertical-align:top;text-align:left;">
+                <button id="styledButton">Acomoda Inventario</button>
+                <div id="logContainer" class="log"></div>
+            </td>
+            <td style="vertical-align:top;display:none;">
+                <div id="logGeneral"></div>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
