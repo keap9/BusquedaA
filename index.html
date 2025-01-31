@@ -174,6 +174,30 @@
             renderGrid();
         }
 
+        //Recalcular los costos para seleccionar siguiente inventario
+        function recalculateCosts(goals) {
+
+            //Se calcula el costo de llegar a cada inventario desde la posición inicial del robot
+            f_m1 = [calculateHeuristic(robotPosition, goals.M1)];
+            f_m2 = [calculateHeuristic(robotPosition, goals.M2)];
+            f_m3 = [calculateHeuristic(robotPosition, goals.M3)];
+
+            //Almacena costos iniciales por inventario
+            const toProcess = {
+                M1: [f_m1],
+                M2: [f_m2],
+                M3: [f_m3]
+            }
+
+
+            // Se convirte el objeto a un array de entradas
+            entries = Object.entries(toProcess);
+            // Ordenar de nuevo los objetivos
+            entries.sort(([, [valueA]], [, [valueB]]) => valueA - valueB);
+
+            return entries;
+        }
+
         function arrangeInventory() {
 
             log("Iniciando búsqueda A*...");
@@ -185,27 +209,11 @@
                 M3: [0, 3]
             };
 
-            //Se calcula el costo de llegar a cada inventario desde la posición inicial del robot
-            var f_m1 = calculateHeuristic(robotPosition, goals.M1)
-            var f_m2 = calculateHeuristic(robotPosition, goals.M2)
-            var f_m3 = calculateHeuristic(robotPosition, goals.M3)
-
-            //Almacena costos iniciales por inventario
-            const toProcess = {
-                M1: [f_m1],
-                M2: [f_m2],
-                M3: [f_m3]
-            }
-
+           
+            var entries = recalculateCosts(goals);
             //Nos ayuda en el proceso que debemos esperar en pantalla para que se visualice el movimiento del robot
             //en base a los cálculos del algortimo
             var seconds = 0
-
-            // Se convirte el objeto a un array de entradas
-            var entries = Object.entries(toProcess);
-
-            // Ordenar las entradas por el costo
-            entries.sort(([, [valueA]], [, [valueB]]) => valueA - valueB);
 
             var strOrder = 'Se calcula el costo de llegar a cada inventario desde la posición inicial del robot <br>'
 
@@ -215,7 +223,7 @@
 
             log(strOrder);
 
-            var strFirst = 'En basea a los resultados anteriores se comenzará primero por el más cercano <br>'
+            var strFirst = 'En base a los resultados anteriores se comenzará primero por el más cercano <br>'
 
             entries.some(([key, value]) => {
                 strFirst += `Inventario: ${key} - Costo: ${value} <br>`;
@@ -336,7 +344,7 @@
                 if (gPosition[0] === cx && gPosition[1] === cy) {
                     //Se agrega la posición objetivo alcanzada a arreglo general
                     depured.push({
-                        position: current.position, description: 'Lista cerrada: [' + current.position + '] | Objetivo alcanzado'
+                        position: current.position, description: ' <br>Lista cerrada: [' + current.position + '] | <b>Objetivo alcanzado</b>'
                     });
                     //Se agrega la posición objetivo alcanzada a arreglo de ruta óptima
                     pathfinal.push(...current.path);
@@ -355,7 +363,7 @@
                     openList.push({ position: [mx, my], g, h, f });
                 });
 
-                var detail = `Lista cerrada: ${JSON.stringify(closedList)}` + ' | ' + `Lista abierta: ${JSON.stringify(openList)}`;
+                var detail = `<br ><b>Lista cerrada: </b>` + closedList.map(item => JSON.stringify(item)).join('<br>') + ' <br><br>' + `<b>Lista abierta:</b> <br>` + openList.map(item => JSON.stringify(item)).join('<br>');
 
                 logGeneral(detail);
 
@@ -425,7 +433,9 @@
 
                 //Se muesta en pantalla las iteraciones que se hicieron para llegar a posiciones necesarias, y sus listas cerradas y abiertas
                 result.forEach((item, index) => {
-                    log(`Iteración ${index + 1}: Posición = [${item.position}], Descripción = ${item.description}`);
+                    log(`</b>Iteración ${index + 1}:</b> 
+                        <br><b>Posición</b>: [${item.position}] 
+                        <br>Descripción  ${item.description}`);
                 });
 
                 executePath(pathfinal);
@@ -475,7 +485,7 @@
                 <button id="styledButton">Acomoda Inventario</button>
                 <div id="logContainer" class="log"></div>
             </td>
-            <td style="vertical-align:top;display:none;">
+            <td style="vertical-align:top;display:inline-block;">
                 <div id="logGeneral"></div>
             </td>
         </tr>
